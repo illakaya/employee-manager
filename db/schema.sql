@@ -1,3 +1,4 @@
+-- To run in command line, go into postgres and run \i db/schema.sql, same for seeds
 -- If the database already exists, drop it
 DROP DATABASE IF EXISTS employee_db;
 
