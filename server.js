@@ -28,59 +28,58 @@ const mainMenu = async () => {
     });
     switch (action) {
       case "View All Departments":
-        viewDepartments();
+        await viewDepartments();
         break;
       case "View All Roles":
-        viewRoles();
+        await viewRoles();
         break;
       case "View All Employees":
-        viewEmployees();
+        await viewEmployees();
         break;
       case "Add a Department":
-        addDepartment();
+        await addDepartment();
         break;
       case "Add a Role":
-        addRole();
+        await addRole();
         break;
       case "Add an Employee":
-        addEmployee();
+        await addEmployee();
         break;
       case "Quit":
-        appInUse = false;
-        disconnect();
+        await disconnect();
+        return;
     }
+    await mainMenu();
   } catch (error) {
     console.error("Error occurred during prompt:", error);
   }
 };
 
-// Create a postgres query
-const getDepartments = async () => {
+const executeQuery = async (query, params = []) => {
   try {
-    let res = await pool.query(`SELECT * FROM department ORDER BY id;`);
+    const res = await pool.query(query, params);
     return res.rows;
   } catch (error) {
     console.error("Error executing query", error.message);
     throw error;
   }
+};
+
+// Create a postgres query
+const getDepartments = async () => {
+  return await executeQuery(`SELECT * FROM department ORDER BY id;`);
 };
 
 // Create a postgres query and print to the console as a table
 // use AS to replace column name department.name to department
 // retrieve the department name by JOINing the two tables based on the department_id from the role table referencing department id
 const getRoles = async () => {
-  try {
-    let res = await pool.query(
-      `SELECT role.id, role.title, department.name AS department, role.salary 
+  return await executeQuery(
+    `SELECT role.id, role.title, department.name AS department, role.salary 
       FROM role 
       JOIN department ON role.department_id = department.id 
       ORDER BY role.id;`
-    );
-    return res.rows;
-  } catch (error) {
-    console.error("Error executing query", error.message);
-    throw error;
-  }
+  );
 };
 
 // Create a postgres query and print to the console as a table
@@ -91,41 +90,31 @@ const getRoles = async () => {
 // retrieve the managers name by using a LEFT JOIN to return all employees even if they do not have managers
 // name employee table as e and m to ensure clarity in referencing tables through postgres queries
 const getEmployees = async () => {
-  try {
-    let res = await pool.query(
-      `SELECT e.id, e.first_name, e.last_name, role.title, department.name AS department, role.salary, CONCAT(m.first_name, ' ', m.last_name) AS manager 
+  return await executeQuery(
+    `SELECT e.id, e.first_name, e.last_name, role.title, department.name AS department, role.salary, CONCAT(m.first_name, ' ', m.last_name) AS manager 
       FROM employee e
       JOIN role ON e.role_id = role.id
       JOIN department ON role.department_id = department.id
       LEFT JOIN employee m ON e.manager_id = m.id;`
-    );
-    return res.rows;
-  } catch (error) {
-    console.error("Error executing query", error.message);
-    throw error;
-  }
+  );
 };
 
 // print departments to the console as a table & return back to the main menu
 const viewDepartments = async () => {
   let departments = await getDepartments();
   console.table(departments);
-  mainMenu();
 };
-
 
 // print roles to the console as a table & return back to the main menu
 const viewRoles = async () => {
   let roles = await getRoles();
   console.table(roles);
-  mainMenu();
 };
 
 // print employees to the console as a table & return back to the main menu
 const viewEmployees = async () => {
   let employees = await getEmployees();
   console.table(employees);
-  mainMenu();
 };
 
 // prompt user for department name and inform user that the info is stored into the database
@@ -136,18 +125,16 @@ const addDepartment = async () => {
       type: "input",
       message: "Enter the name of the department:",
     });
-    try {
-      await pool.query("INSERT INTO department (name) VALUES ($1)", [name]);
-      console.log(`Added ${name} to the database`);
-    } catch (error) {
-      console.error("Error executing query", error.message);
-    }
-    mainMenu();
+    await executeQuery("INSERT INTO department (name) VALUES ($1)", [name]);
+    console.log(`Added ${name} to the database`);
   } catch (error) {
-    console.error("Error occurred during prompt:", error);
+    console.error("Error occurred:", error);
   }
 };
 
+// retrieve departments and the array will be used to prompt users with choices rather than typing an id
+// values are assigned to them to match with postgres table columns
+// prompt user for data and inform user that the info is stored into the database
 const addRole = async () => {
   try {
     let departments = await getDepartments();
@@ -173,24 +160,19 @@ const addRole = async () => {
         choices: departmentSelection,
       },
     ]);
-    try {
-      await pool.query("INSERT INTO role (title, salary, department_id) VALUES ($1, $2, $3)", [
-        title,
-        salary,
-        departmentId,
-      ]);
-      console.log(`Added ${title} to the database`);
-    } catch (error) {
-      console.error("Error executing query", error.message);
-    }
-
-    mainMenu();
+    await executeQuery("INSERT INTO role (title, salary, department_id) VALUES ($1, $2, $3)",
+      [title, salary, departmentId]
+    );
+    console.log(`Added ${title} to the database`);
   } catch (error) {
-    console.error("Error occurred during prompt:", error);
-    mainMenu();
+    console.error("Error occurred:", error);
   }
 };
 
+// retrieve roles and employees, and push no manager into manager array
+// these arrays will be used to prompt users with choices rather than typing an id
+// values are assigned to them to match with postgres table columns
+// prompt user for data and inform user that the info is stored into the database
 const addEmployee = async () => {
   try {
     let roles = await getRoles();
@@ -229,25 +211,20 @@ const addEmployee = async () => {
         choices: managerSelection,
       },
     ]);
-    await pool.query("INSERT INTO employee (first_name, last_name, role_id, manager_id) VALUES ($1, $2, $3, $4)", [
-      firstName,
-      lastName,
-      roleId,
-      managerId,
-    ]);
+    await executeQuery("INSERT INTO employee (first_name, last_name, role_id, manager_id) VALUES ($1, $2, $3, $4)",
+      [firstName, lastName, roleId, managerId]
+    );
     console.log(`Added ${firstName} ${lastName} to the database`);
-    mainMenu();
   } catch (error) {
-    console.error("Error occurred during prompt:", error);
-    mainMenu();
+    console.error("Error occurred:", error);
   }
 };
 
 // disconnect the database from the application
 // and end the server
-const disconnect = () => {
+const disconnect = async () => {
   try {
-    pool.end();
+    await pool.end();
     console.log("Disconnected from database.");
     process.exit();
   } catch (error) {
