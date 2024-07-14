@@ -3,9 +3,6 @@ const inquirer = require("inquirer");
 // import pool connection
 const pool = require("./config/connection");
 
-// connect to the database
-pool.connect();
-
 // Create the main menu using inquirer
 // provide a list for users to choose from
 // prompt is deconstructed to avoid answer.action
@@ -23,6 +20,7 @@ const mainMenu = async () => {
         "Add a Department",
         "Add a Role",
         "Add an Employee",
+        "Update Employee Role",
         "Quit",
       ],
     });
@@ -45,6 +43,9 @@ const mainMenu = async () => {
       case "Add an Employee":
         await addEmployee();
         break;
+      case "Update Employee Role":
+        await updateEmployeeRole();
+        break;
       case "Quit":
         await disconnect();
         return;
@@ -55,6 +56,7 @@ const mainMenu = async () => {
   }
 };
 
+// Execute a database query with parameters
 const executeQuery = async (query, params = []) => {
   try {
     const res = await pool.query(query, params);
@@ -70,7 +72,7 @@ const getDepartments = async () => {
   return await executeQuery(`SELECT * FROM department ORDER BY id;`);
 };
 
-// Create a postgres query and print to the console as a table
+// Create a postgres query
 // use AS to replace column name department.name to department
 // retrieve the department name by JOINing the two tables based on the department_id from the role table referencing department id
 const getRoles = async () => {
@@ -95,23 +97,24 @@ const getEmployees = async () => {
       FROM employee e
       JOIN role ON e.role_id = role.id
       JOIN department ON role.department_id = department.id
-      LEFT JOIN employee m ON e.manager_id = m.id;`
+      LEFT JOIN employee m ON e.manager_id = m.id
+      ORDER BY e.id;`
   );
 };
 
-// print departments to the console as a table & return back to the main menu
+// print departments to the console as a table
 const viewDepartments = async () => {
   let departments = await getDepartments();
   console.table(departments);
 };
 
-// print roles to the console as a table & return back to the main menu
+// print roles to the console as a table
 const viewRoles = async () => {
   let roles = await getRoles();
   console.table(roles);
 };
 
-// print employees to the console as a table & return back to the main menu
+// print employees to the console as a table
 const viewEmployees = async () => {
   let employees = await getEmployees();
   console.table(employees);
@@ -135,6 +138,7 @@ const addDepartment = async () => {
 // retrieve departments and the array will be used to prompt users with choices rather than typing an id
 // values are assigned to them to match with postgres table columns
 // prompt user for data and inform user that the info is stored into the database
+// $1 is variable 1, $2 is variable 2 and $3 is variable 3
 const addRole = async () => {
   try {
     let departments = await getDepartments();
@@ -180,7 +184,6 @@ const addEmployee = async () => {
       name: role.title,
       value: role.id,
     }));
-
     let employees = await getEmployees();
     const managerSelection = employees.map((employee) => ({
       name: `${employee.first_name} ${employee.last_name}`,
@@ -220,15 +223,49 @@ const addEmployee = async () => {
   }
 };
 
+const updateEmployeeRole = async () => {
+  try {
+    let employees = await getEmployees();
+    const employeeSelection = employees.map((employee) => ({
+      name: `${employee.first_name} ${employee.last_name}`,
+      value: employee.id,
+    }));
+    let roles = await getRoles();
+    const roleSelection = roles.map((role) => ({
+      name: role.title,
+      value: role.id,
+    }));
+    const { employeeId, newRoleId } = await inquirer.prompt([
+      {
+        name: "employeeId",
+        type: "list",
+        message: "Select the employee you want to update:",
+        choices: employeeSelection,
+      },
+      {
+        name: "newRoleId",
+        type: "list",
+        message: "Select the role of the employee:",
+        choices: roleSelection,
+      },
+    ]);
+    await executeQuery("UPDATE employee SET role_id = $1 WHERE id = $2", [newRoleId, employeeId]);
+    console.log(`Updated ${employeeSelection.find((e) => e.value === employeeId).name}'s role`);
+  } catch (error) {
+    console.error("Error occurred:", error);
+  }
+};
+
 // disconnect the database from the application
 // and end the server
 const disconnect = async () => {
   try {
     await pool.end();
     console.log("Disconnected from database.");
-    process.exit();
+    process.exit(0); // exit successfully
   } catch (error) {
     console.error("Error disconnecting from database:", error);
+    process.exit(1); // error occurred, exit immediately
   }
 };
 
